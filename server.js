@@ -143,7 +143,33 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 app.options("*", cors(corsOptions)); // handle all preflight requests
-app.use(express.json({ limit: "2mb" }));
+// The frontend can send large payloads (e.g. multiple photos encoded in JSON).
+// If we keep this too low, Express will emit a 413 with a non-JSON body and the
+// frontend's `response.json()` will crash with "Unexpected token ...".
+app.use(express.json({ limit: "25mb" }));
+
+// Ensure JSON-shaped errors for body parsing issues (413 / invalid JSON).
+app.use((err, req, res, next) => {
+  if (!err) return next();
+  const type = err.type || err.name || "Error";
+
+  if (type === "entity.too.large") {
+    return res.status(413).json({
+      error: "Payload too large",
+      code: "PAYLOAD_TOO_LARGE",
+      limit: "25mb",
+    });
+  }
+
+  if (err instanceof SyntaxError && "body" in err) {
+    return res.status(400).json({
+      error: "Invalid JSON",
+      code: "INVALID_JSON",
+    });
+  }
+
+  return next(err);
+});
 
 // -- AUTH HELPERS --------------------------------------------------------------
 const crypto = require("crypto");
@@ -154,6 +180,19 @@ function hashPassword(password) {
 
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+async function parseResponseSafely(response) {
+  const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  const rawText = await response.text();
+  if (contentType.includes("application/json")) {
+    try {
+      return { isJson: true, data: JSON.parse(rawText), text: rawText };
+    } catch {
+      return { isJson: false, data: null, text: rawText };
+    }
+  }
+  return { isJson: false, data: null, text: rawText };
 }
 
 function requireAuth(req, res, next) {
@@ -626,8 +665,20 @@ app.post("/api/ai", requireAuth, async (req, res) => {
       },
       body: JSON.stringify(req.body),
     });
-    const data = await r.json();
-    res.json(data);
+    const parsed = await parseResponseSafely(r);
+    if (!r.ok) {
+      return res.status(r.status).json({
+        error: "Anthropic request failed",
+        upstreamStatus: r.status,
+        details: parsed.isJson ? parsed.data : (parsed.text || "Unknown upstream error"),
+      });
+    }
+    if (parsed.isJson) return res.json(parsed.data);
+    return res.status(502).json({
+      error: "Anthropic returned non-JSON response",
+      upstreamStatus: r.status,
+      details: parsed.text || "",
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -648,8 +699,20 @@ app.post("/api/monday", requireAuth, async (req, res) => {
       },
       body: JSON.stringify({ query, variables: variables || {} }),
     });
-    const data = await r.json();
-    res.json(data);
+    const parsed = await parseResponseSafely(r);
+    if (!r.ok) {
+      return res.status(r.status).json({
+        error: "Monday request failed",
+        upstreamStatus: r.status,
+        details: parsed.isJson ? parsed.data : (parsed.text || "Unknown upstream error"),
+      });
+    }
+    if (parsed.isJson) return res.json(parsed.data);
+    return res.status(502).json({
+      error: "Monday returned non-JSON response",
+      upstreamStatus: r.status,
+      details: parsed.text || "",
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
