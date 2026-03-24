@@ -2,13 +2,20 @@
 
 Backend voor YourDomi Bellijst. Haalt panden op van Toerisme Vlaanderen, slaat AI-verrijking op, en bewaart uitkomsten per pand.
 
+Deze repo bevat ook de **interne React/Vite-app** voor de eigendomsanalyse in de map [`client/`](./client/) (YourDomi-intern rapport).
+
+## Lokaal: server + eigendomsanalyse-UI
+
+1. **Terminal A — API** (repo-root): `npm install` (eenmalig), daarna `npm run dev` of `npm start` (standaard poort **3001**).
+2. **Terminal B — UI**: `cd client && npm install && npm run dev` — Vite start op **5173** en proxy’t `/api/*` naar `http://localhost:3001`.
+3. Zet `ANTHROPIC_KEY` in een `.env` in de root (niet committen) of exporteer in je shell; de UI roept `POST /api/analyze` aan op dezelfde machine.
+
+**Let op:** `POST /api/analyze` gebruikt de Anthropic-proxy **zonder** dezelfde sessie-auth als `POST /api/ai`. Houd de Railway-URL niet publiek toegankelijk zonder extra afscherming als je die key wilt beschermen.
+
 ## Deploy op Railway (15 min)
 
-### 1. Maak een GitHub repo
-1. Ga naar github.com → New repository
-2. Naam: `yourdomi-server`
-3. Private ✓ → Create
-4. Upload alle bestanden uit deze map (server.js, package.json, railway.toml, .gitignore)
+### 1. GitHub-repo
+Repo: [DomiVOF/yourdomi-analysis-internal](https://github.com/DomiVOF/yourdomi-analysis-internal). Railway deployt de **root** (`npm start` → Express). De map `client/` wordt door Nixpacks genegeerd tenzij je het build-proces expliciet uitbreidt.
 
 ### 2. Deploy op Railway
 1. Ga naar railway.app → Login met GitHub
@@ -57,6 +64,8 @@ Daarna: `vercel --prod` opnieuw uitvoeren.
 | `GET /api/enrichment/stale` | IDs die herverrijking nodig hebben |
 | `GET /api/outcomes` | Alle uitkomsten + notities |
 | `POST /api/outcomes/:id` | Sla uitkomst op |
+| `POST /api/ai` | Anthropic Messages API (proxy, met auth) |
+| `POST /api/analyze` | Zelfde proxy voor de eigendomsanalyse-SPA in `client/` (geen sessie-auth) |
 
 ## Automatische taken
 

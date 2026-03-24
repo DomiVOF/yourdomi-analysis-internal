@@ -652,7 +652,7 @@ app.post("/api/users/:username/password", requireAuth, (req, res) => {
 
 // -- MONDAY PROXY -------------------------------------------------------------
 // Browser can't call Monday API directly (CORS). Proxy it through the server.
-app.post("/api/ai", requireAuth, async (req, res) => {
+async function proxyAnthropicMessages(req, res) {
   const apiKey = ANTHROPIC_KEY;
   if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_KEY not configured on server" });
   try {
@@ -682,7 +682,11 @@ app.post("/api/ai", requireAuth, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});
+}
+
+app.post("/api/ai", requireAuth, proxyAnthropicMessages);
+// Interne eigendomsanalyse SPA (`client/`): zelfde Anthropic-proxy, geen sessie-auth (lokaal via Vite proxy).
+app.post("/api/analyze", proxyAnthropicMessages);
 
 app.post("/api/monday", requireAuth, async (req, res) => {
   const apiKey = process.env.MONDAY_API_KEY;
